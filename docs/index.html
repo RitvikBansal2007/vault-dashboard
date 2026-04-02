@@ -30,7 +30,21 @@
 
         h1 { color: #58a6ff; letter-spacing: 2px; margin-bottom: 5px; }
         
-        /* The New Auth Badge */
+        /* The Arm System Button */
+        #armBtn {
+            background-color: #238636;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 1em;
+            cursor: pointer;
+            margin-bottom: 20px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        #armBtn:hover { background-color: #2ea043; }
+        
         #authBadge {
             display: inline-block;
             padding: 8px 16px;
@@ -43,7 +57,6 @@
         .locked { background-color: #30363d; color: #ff7b72; border: 1px solid #ff7b72; }
         .unlocked { background-color: #30363d; color: #3fb950; border: 1px solid #3fb950; }
 
-        /* The Main Status Box */
         #statusBox {
             font-size: 2em;
             font-weight: bold;
@@ -53,7 +66,6 @@
             transition: all 0.3s ease;
         }
 
-        /* Color States for the new logic */
         .secure { background-color: #238636; color: white; border: 2px solid #2ea043; }
         .auth-access { background-color: #1f6feb; color: white; border: 2px solid #388bfd; }
         .warning { background-color: #d29922; color: black; border: 2px solid #e3b341; }
@@ -78,21 +90,20 @@
     <div class="dashboard-container">
         <h1>Vault Security</h1>
         
+        <button id="armBtn">Arm Dashboard (Enable Alarms)</button>
+        <br>
+        
         <div id="authBadge" class="locked">SYSTEM LOCKED</div>
-        
         <div id="statusBox" class="secure">CONNECTING...</div>
-        
         <div class="timestamp" id="timeBox">Awaiting data stream...</div>
     </div>
+
+    <audio id="sirenAudio" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" loop></audio>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-        // ==========================================
-        // PASTE YOUR FIREBASE CONFIG HERE! 
-        // (Make sure it has the comma fix from earlier!)
-        // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyDuwgLK0qFc2R4i8ll_6NdKuo_tc1fNWrU",
             authDomain: "bank-vault-8e868.firebaseapp.com",
@@ -100,17 +111,40 @@
             storageBucket: "bank-vault-8e868.firebasestorage.app",
             messagingSenderId: "23788039726",
             appId: "1:23788039726:web:c2cf97ee10477968fdb9bf",
-            measurementId: "G-B9W11GXFXD", // <--- THE COMMA GOES HERE
+            measurementId: "G-B9W11GXFXD",
             databaseURL: "https://bank-vault-8e868-default-rtdb.firebaseio.com"
         };
-        // ==========================================
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // We now listen to TWO different paths in Firebase
         const statusRef = ref(db, 'Vault/Status');
         const authRef = ref(db, 'Vault/Auth');
+
+        // --- BROWSER PERMISSIONS LOGIC ---
+        const siren = document.getElementById('sirenAudio');
+        let notificationsEnabled = false;
+
+        document.getElementById('armBtn').addEventListener('click', function() {
+            // Request Notification Permission
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    notificationsEnabled = true;
+                    this.innerText = "Dashboard Armed";
+                    this.style.backgroundColor = "#30363d"; // Darken button to show it's active
+                    
+                    // Send a test notification
+                    new Notification("Vault Armed", { body: "Audio and pop-ups are active." });
+                }
+            });
+            
+            // "Unlock" the audio player for the browser
+            siren.play().then(() => {
+                siren.pause();
+                siren.currentTime = 0;
+            }).catch(error => console.log("Audio unlock failed"));
+        });
+        // ----------------------------------
 
         // 1. Listen for AUTH changes (Locked/Unlocked)
         onValue(authRef, (snapshot) => {
@@ -121,6 +155,11 @@
                 authBadge.innerText = "SYSTEM " + authData;
                 if (authData === "UNLOCKED") {
                     authBadge.className = "unlocked";
+                    
+                    // Trigger notification for Unlocked
+                    if (notificationsEnabled) {
+                        new Notification("System Unlocked", { body: "Authorized access granted." });
+                    }
                 } else {
                     authBadge.className = "locked";
                 }
@@ -128,6 +167,8 @@
         });
 
         // 2. Listen for STATUS changes (Sensors/Breaches)
+        let lastKnownStatus = ""; // Remember the last status to prevent spamming notifications
+
         onValue(statusRef, (snapshot) => {
             const data = snapshot.val();
             const statusBox = document.getElementById('statusBox');
@@ -136,15 +177,29 @@
             if (data) {
                 statusBox.innerText = data;
                 
-                // Smart color styling based on the words in the status
-                if (data.includes("SECURE")) {
-                    statusBox.className = "secure";
-                } else if (data.includes("AUTHORIZED")) {
-                    statusBox.className = "auth-access"; // Blue
+                // Smart color styling & Alarm Logic
+                if (data.includes("SECURE") || data.includes("AUTHORIZED")) {
+                    statusBox.className = data.includes("SECURE") ? "secure" : "auth-access";
+                    
+                    // Turn off the siren if it's currently playing
+                    siren.pause();
+                    siren.currentTime = 0; 
+                    
                 } else if (data.includes("WARNING") || data.includes("ALERT")) {
-                    statusBox.className = "warning"; // Yellow
+                    statusBox.className = "warning"; 
+                    siren.pause(); // Just a warning, no full siren
+                    
                 } else if (data.includes("CRITICAL") || data.includes("BREACH")) {
-                    statusBox.className = "critical"; // Flashing Red
+                    statusBox.className = "critical"; 
+                    
+                    // PLAY THE SIREN!
+                    siren.play().catch(e => console.log("User hasn't clicked Arm button yet"));
+                }
+
+                // Send a browser notification ONLY if the status actually changed
+                if (notificationsEnabled && data !== lastKnownStatus) {
+                    new Notification("Vault Status Update", { body: data });
+                    lastKnownStatus = data;
                 }
 
                 const now = new Date();
