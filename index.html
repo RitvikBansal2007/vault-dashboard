@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligent Vault Command Center</title>
+    <style>
+        /* Modern, dark-themed styling */
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h1 {
+            color: #58a6ff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .dashboard-container {
+            background: #161b22;
+            padding: 40px;
+            border-radius: 12px;
+            border: 1px solid #30363d;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 80%;
+            max-width: 600px;
+        }
+
+        /* The Status Indicator Box */
+        #statusBox {
+            font-size: 2.5em;
+            font-weight: bold;
+            padding: 30px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-transform: uppercase;
+            transition: background-color 0.3s;
+        }
+
+        /* Safe State */
+        .secure {
+            background-color: #238636;
+            color: white;
+            border: 2px solid #2ea043;
+        }
+
+        /* Alert State with Flashing Animation */
+        .alert {
+            background-color: #da3633;
+            color: white;
+            border: 2px solid #f85149;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.02); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .timestamp {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #8b949e;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <h1>Vault Command Center</h1>
+        <p>Live IoT Security Feed</p>
+        
+        <div id="statusBox" class="secure">CONNECTING...</div>
+        
+        <div class="timestamp" id="timeBox">Awaiting data stream...</div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        // TODO: Replace this URL with your actual Firebase Realtime Database URL
+        const firebaseConfig = {
+        apiKey: "AIzaSyDuwgLK0qFc2R4i8ll_6NdKuo_tc1fNWrU",
+        authDomain: "bank-vault-8e868.firebaseapp.com",
+        projectId: "bank-vault-8e868",
+        storageBucket: "bank-vault-8e868.firebasestorage.app",
+        messagingSenderId: "23788039726",
+        appId: "1:23788039726:web:c2cf97ee10477968fdb9bf",
+        measurementId: "G-B9W11GXFXD", // <--- THE COMMA GOES HERE
+        databaseURL: "https://bank-vault-8e868-default-rtdb.firebaseio.com"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Point to the exact same location the ESP32 is writing to
+        const statusRef = ref(db, 'Vault/Status');
+
+        // Listen for real-time changes
+        onValue(statusRef, (snapshot) => {
+            const data = snapshot.val();
+            const statusBox = document.getElementById('statusBox');
+            const timeBox = document.getElementById('timeBox');
+
+            // Update the text
+            if (data) {
+                statusBox.innerText = data;
+                
+                // Update the styling based on the status
+                if (data === "SECURE") {
+                    statusBox.className = "secure";
+                } else {
+                    statusBox.className = "alert";
+                    // Optional: You could trigger an HTML5 audio object here to play a siren sound
+                }
+
+                // Update timestamp
+                const now = new Date();
+                timeBox.innerText = "Last Updated: " + now.toLocaleTimeString();
+            }
+        });
+    </script>
+</body>
+</html>
