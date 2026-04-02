@@ -5,108 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vault Command Center</title>
     <style>
-        body {
-            background-color: #0d1117;
-            color: #c9d1d9;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-
-        .dashboard-container {
-            background: #161b22;
-            padding: 40px;
-            border-radius: 12px;
-            border: 1px solid #30363d;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            text-align: center;
-            width: 85%;
-            max-width: 700px;
-        }
-
-        h1 { color: #58a6ff; letter-spacing: 2px; margin-bottom: 5px; }
-        
-        #armBtn {
-            background-color: #238636;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 1.1em;
-            cursor: pointer;
-            margin-bottom: 20px;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-        
-        /* State for when it's armed but needs a click for audio */
-        .needs-sync {
-            background-color: #d29922 !important;
-            color: black !important;
-        }
-
-        /* State for fully armed */
-        .armed {
-            background-color: #30363d !important;
-            color: #58a6ff !important;
-            border: 1px solid #58a6ff !important;
-        }
-        
-        #authBadge {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: bold;
-            font-size: 0.9em;
-            margin-bottom: 20px;
-            text-transform: uppercase;
-        }
-        .locked { background-color: #30363d; color: #ff7b72; border: 1px solid #ff7b72; }
-        .unlocked { background-color: #30363d; color: #3fb950; border: 1px solid #3fb950; }
-
-        #statusBox {
-            font-size: 2em;
-            font-weight: bold;
-            padding: 30px;
-            border-radius: 8px;
-            text-transform: uppercase;
-            transition: all 0.3s ease;
-        }
-
-        .secure { background-color: #238636; color: white; border: 2px solid #2ea043; }
-        .auth-access { background-color: #1f6feb; color: white; border: 2px solid #388bfd; }
-        .warning { background-color: #d29922; color: black; border: 2px solid #e3b341; }
-        .critical { 
-            background-color: #da3633; 
-            color: white; 
-            border: 2px solid #f85149;
-            animation: pulse 1s infinite;
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.02); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        .timestamp { margin-top: 20px; font-size: 0.9em; color: #8b949e; }
+        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .dashboard-container { background: #161b22; padding: 40px; border-radius: 12px; border: 1px solid #30363d; text-align: center; width: 85%; max-width: 700px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h1 { color: #58a6ff; letter-spacing: 2px; }
+        #userDisplay { color: #58a6ff; font-weight: bold; margin-bottom: 15px; }
+        #armBtn { background-color: #238636; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 20px; }
+        .needs-sync { background-color: #d29922 !important; color: black !important; }
+        .armed { background-color: #30363d !important; color: #58a6ff !important; border: 1px solid #58a6ff !important; }
+        #authBadge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; text-transform: uppercase; }
+        .locked { border: 1px solid #ff7b72; color: #ff7b72; }
+        .unlocked { border: 1px solid #3fb950; color: #3fb950; }
+        #statusBox { font-size: 2em; font-weight: bold; padding: 30px; border-radius: 8px; text-transform: uppercase; transition: 0.3s; }
+        .secure { background-color: #238636; color: white; }
+        .auth-access { background-color: #1f6feb; color: white; }
+        .warning { background-color: #d29922; color: black; }
+        .critical { background-color: #da3633; color: white; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
     <div class="dashboard-container">
-        <h1>Vault Security</h1>
-        
+        <h1>VAULT SECURITY</h1>
+        <div id="userDisplay">ACTIVE USER: DISCONNECTED</div>
         <button id="armBtn">Arm Dashboard</button>
         <br>
-        
         <div id="authBadge" class="locked">SYSTEM LOCKED</div>
         <div id="statusBox" class="secure">CONNECTING...</div>
-        <div class="timestamp" id="timeBox">Awaiting data stream...</div>
     </div>
 
     <audio id="sirenAudio" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" loop></audio>
@@ -128,18 +53,15 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-
         const statusRef = ref(db, 'Vault/Status');
         const authRef = ref(db, 'Vault/Auth');
+        const userRef = ref(db, 'Vault/User');
 
         const siren = document.getElementById('sirenAudio');
         const armBtn = document.getElementById('armBtn');
-        
         let notificationsEnabled = false;
         let audioUnlocked = false;
 
-        // --- SESSION PERSISTENCE LOGIC ---
-        // On load, check if we previously armed the system
         if (localStorage.getItem('vaultArmed') === 'true') {
             if (Notification.permission === 'granted') {
                 notificationsEnabled = true;
@@ -148,85 +70,43 @@
             }
         }
 
-        function checkAndTriggerAlarm(statusData) {
+        function checkAndTriggerAlarm(data) {
             const statusBox = document.getElementById('statusBox');
-            statusBox.innerText = statusData;
-
-            if (statusData.includes("SECURE") || statusData.includes("AUTHORIZED")) {
-                statusBox.className = statusData.includes("SECURE") ? "secure" : "auth-access";
+            statusBox.innerText = data;
+            if (data.includes("SECURE") || data.includes("AUTHORIZED")) {
+                statusBox.className = data.includes("SECURE") ? "secure" : "auth-access";
                 siren.pause();
-                siren.currentTime = 0;
-            } else if (statusData.includes("WARNING") || statusData.includes("ALERT")) {
+            } else if (data.includes("WARNING") || data.includes("ALERT")) {
                 statusBox.className = "warning";
                 siren.pause();
-            } else if (statusData.includes("CRITICAL") || statusData.includes("BREACH")) {
+            } else if (data.includes("CRITICAL") || data.includes("BREACH")) {
                 statusBox.className = "critical";
-                
-                // Audio will only play if user has clicked at least once this session
-                if (audioUnlocked) {
-                    siren.play().catch(e => console.log("Audio play failed"));
-                }
-                
-                // Notifications will work if permission was granted previously
-                if (notificationsEnabled) {
-                    new Notification("VAULT BREACHED", { 
-                        body: statusData, 
-                        icon: "https://cdn-icons-png.flaticon.com/512/595/595067.png" 
-                    });
-                }
+                if (audioUnlocked) siren.play();
+                if (notificationsEnabled) new Notification("VAULT BREACHED", { body: data });
             }
         }
 
         armBtn.addEventListener('click', function() {
-            // 1. Mark as armed in permanent memory
             localStorage.setItem('vaultArmed', 'true');
-            
-            // 2. Unlock Audio for this session
             audioUnlocked = true;
-            siren.play().then(() => {
-                siren.pause();
-                siren.currentTime = 0;
-                
-                this.innerText = "Dashboard Fully Armed";
-                this.classList.remove('needs-sync');
-                this.classList.add('armed');
-            });
-
-            // 3. Request Notifications if not yet granted
-            if (Notification.permission !== 'granted') {
-                Notification.requestPermission().then(permission => {
-                    if (permission === 'granted') {
-                        notificationsEnabled = true;
-                        new Notification("Notifications Enabled");
-                    }
-                });
-            } else {
-                notificationsEnabled = true;
-            }
-
-            // 4. Force immediate check
-            get(statusRef).then((snapshot) => {
-                if (snapshot.exists()) {
-                    checkAndTriggerAlarm(snapshot.val());
-                }
-            });
+            siren.play().then(() => { siren.pause(); siren.currentTime = 0; });
+            this.innerText = "Dashboard Fully Armed";
+            this.className = "armed";
+            if (Notification.permission !== 'granted') Notification.requestPermission();
+            get(statusRef).then((snap) => { if (snap.exists()) checkAndTriggerAlarm(snap.val()); });
         });
 
-        // Live Listeners
-        onValue(authRef, (snapshot) => {
-            const authData = snapshot.val();
-            const authBadge = document.getElementById('authBadge');
-            if (authData) {
-                authBadge.innerText = "SYSTEM " + authData;
-                authBadge.className = (authData === "UNLOCKED") ? "unlocked" : "locked";
-            }
+        onValue(userRef, (snap) => {
+            document.getElementById('userDisplay').innerText = "ACTIVE USER: " + (snap.val() || "NONE");
         });
 
-        onValue(statusRef, (snapshot) => {
-            if (snapshot.exists()) {
-                checkAndTriggerAlarm(snapshot.val());
-            }
+        onValue(authRef, (snap) => {
+            const badge = document.getElementById('authBadge');
+            badge.innerText = "SYSTEM " + snap.val();
+            badge.className = (snap.val() === "UNLOCKED") ? "unlocked" : "locked";
         });
+
+        onValue(statusRef, (snap) => { if (snap.exists()) checkAndTriggerAlarm(snap.val()); });
     </script>
 </body>
 </html>
