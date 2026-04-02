@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Intelligent Vault Command Center</title>
+    <title>Distributed Vault Command Center</title>
     <style>
-        /* Modern, dark-themed styling */
         body {
             background-color: #0d1117;
             color: #c9d1d9;
@@ -18,12 +17,6 @@
             margin: 0;
         }
 
-        h1 {
-            color: #58a6ff;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
         .dashboard-container {
             background: #161b22;
             padding: 40px;
@@ -31,32 +24,42 @@
             border: 1px solid #30363d;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             text-align: center;
-            width: 80%;
-            max-width: 600px;
+            width: 85%;
+            max-width: 700px;
         }
 
-        /* The Status Indicator Box */
+        h1 { color: #58a6ff; letter-spacing: 2px; margin-bottom: 5px; }
+        
+        /* The New Auth Badge */
+        #authBadge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+        .locked { background-color: #30363d; color: #ff7b72; border: 1px solid #ff7b72; }
+        .unlocked { background-color: #30363d; color: #3fb950; border: 1px solid #3fb950; }
+
+        /* The Main Status Box */
         #statusBox {
-            font-size: 2.5em;
+            font-size: 2em;
             font-weight: bold;
             padding: 30px;
             border-radius: 8px;
-            margin-top: 20px;
             text-transform: uppercase;
-            transition: background-color 0.3s;
+            transition: all 0.3s ease;
         }
 
-        /* Safe State */
-        .secure {
-            background-color: #238636;
-            color: white;
-            border: 2px solid #2ea043;
-        }
-
-        /* Alert State with Flashing Animation */
-        .alert {
-            background-color: #da3633;
-            color: white;
+        /* Color States for the new logic */
+        .secure { background-color: #238636; color: white; border: 2px solid #2ea043; }
+        .auth-access { background-color: #1f6feb; color: white; border: 2px solid #388bfd; }
+        .warning { background-color: #d29922; color: black; border: 2px solid #e3b341; }
+        .critical { 
+            background-color: #da3633; 
+            color: white; 
             border: 2px solid #f85149;
             animation: pulse 1s infinite;
         }
@@ -67,18 +70,15 @@
             100% { transform: scale(1); opacity: 1; }
         }
 
-        .timestamp {
-            margin-top: 20px;
-            font-size: 0.9em;
-            color: #8b949e;
-        }
+        .timestamp { margin-top: 20px; font-size: 0.9em; color: #8b949e; }
     </style>
 </head>
 <body>
 
     <div class="dashboard-container">
-        <h1>Vault Command Center</h1>
-        <p>Live IoT Security Feed</p>
+        <h1>Distributed Security Grid</h1>
+        
+        <div id="authBadge" class="locked">SYSTEM LOCKED</div>
         
         <div id="statusBox" class="secure">CONNECTING...</div>
         
@@ -89,44 +89,64 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-        // TODO: Replace this URL with your actual Firebase Realtime Database URL
+        // ==========================================
+        // PASTE YOUR FIREBASE CONFIG HERE! 
+        // (Make sure it has the comma fix from earlier!)
+        // ==========================================
         const firebaseConfig = {
-        apiKey: "AIzaSyDuwgLK0qFc2R4i8ll_6NdKuo_tc1fNWrU",
-        authDomain: "bank-vault-8e868.firebaseapp.com",
-        projectId: "bank-vault-8e868",
-        storageBucket: "bank-vault-8e868.firebasestorage.app",
-        messagingSenderId: "23788039726",
-        appId: "1:23788039726:web:c2cf97ee10477968fdb9bf",
-        measurementId: "G-B9W11GXFXD", // <--- THE COMMA GOES HERE
-        databaseURL: "https://bank-vault-8e868-default-rtdb.firebaseio.com"
+            apiKey: "AIzaSyDuwgLK0qFc2R4i8ll_6NdKuo_tc1fNWrU",
+            authDomain: "bank-vault-8e868.firebaseapp.com",
+            projectId: "bank-vault-8e868",
+            storageBucket: "bank-vault-8e868.firebasestorage.app",
+            messagingSenderId: "23788039726",
+            appId: "1:23788039726:web:c2cf97ee10477968fdb9bf",
+            measurementId: "G-B9W11GXFXD", // <--- THE COMMA GOES HERE
+            databaseURL: "https://bank-vault-8e868-default-rtdb.firebaseio.com"
         };
+        // ==========================================
 
-        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // Point to the exact same location the ESP32 is writing to
+        // We now listen to TWO different paths in Firebase
         const statusRef = ref(db, 'Vault/Status');
+        const authRef = ref(db, 'Vault/Auth');
 
-        // Listen for real-time changes
+        // 1. Listen for AUTH changes (Locked/Unlocked)
+        onValue(authRef, (snapshot) => {
+            const authData = snapshot.val();
+            const authBadge = document.getElementById('authBadge');
+            
+            if (authData) {
+                authBadge.innerText = "SYSTEM " + authData;
+                if (authData === "UNLOCKED") {
+                    authBadge.className = "unlocked";
+                } else {
+                    authBadge.className = "locked";
+                }
+            }
+        });
+
+        // 2. Listen for STATUS changes (Sensors/Breaches)
         onValue(statusRef, (snapshot) => {
             const data = snapshot.val();
             const statusBox = document.getElementById('statusBox');
             const timeBox = document.getElementById('timeBox');
 
-            // Update the text
             if (data) {
                 statusBox.innerText = data;
                 
-                // Update the styling based on the status
-                if (data === "SECURE") {
+                // Smart color styling based on the words in the status
+                if (data.includes("SECURE")) {
                     statusBox.className = "secure";
-                } else {
-                    statusBox.className = "alert";
-                    // Optional: You could trigger an HTML5 audio object here to play a siren sound
+                } else if (data.includes("AUTHORIZED")) {
+                    statusBox.className = "auth-access"; // Blue
+                } else if (data.includes("WARNING") || data.includes("ALERT")) {
+                    statusBox.className = "warning"; // Yellow
+                } else if (data.includes("CRITICAL") || data.includes("BREACH")) {
+                    statusBox.className = "critical"; // Flashing Red
                 }
 
-                // Update timestamp
                 const now = new Date();
                 timeBox.innerText = "Last Updated: " + now.toLocaleTimeString();
             }
