@@ -102,7 +102,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+        import { getDatabase, ref, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDuwgLK0qFc2R4i8ll_6NdKuo_tc1fNWrU",
@@ -121,89 +121,71 @@
         const statusRef = ref(db, 'Vault/Status');
         const authRef = ref(db, 'Vault/Auth');
 
-        // --- BROWSER PERMISSIONS LOGIC ---
         const siren = document.getElementById('sirenAudio');
+        const armBtn = document.getElementById('armBtn');
         let notificationsEnabled = false;
 
-        document.getElementById('armBtn').addEventListener('click', function() {
-            // Request Notification Permission
+        // Function to handle the Alarm Logic (Shared by listener and button)
+        function checkAndTriggerAlarm(statusData) {
+            const statusBox = document.getElementById('statusBox');
+            statusBox.innerText = statusData;
+
+            if (statusData.includes("SECURE") || statusData.includes("AUTHORIZED")) {
+                statusBox.className = statusData.includes("SECURE") ? "secure" : "auth-access";
+                siren.pause();
+                siren.currentTime = 0;
+            } else if (statusData.includes("WARNING") || statusData.includes("ALERT")) {
+                statusBox.className = "warning";
+                siren.pause();
+            } else if (statusData.includes("CRITICAL") || statusData.includes("BREACH")) {
+                statusBox.className = "critical";
+                // This will now work because it's called after a click or during a live update
+                siren.play().catch(e => console.log("Audio waiting for user arming..."));
+                
+                if (notificationsEnabled) {
+                    new Notification("VAULT BREACHED", { body: statusData, icon: "https://cdn-icons-png.flaticon.com/512/595/595067.png" });
+                }
+            }
+        }
+
+        // --- THE "ARM" BUTTON FIX ---
+        armBtn.addEventListener('click', function() {
+            // 1. Request/Verify Notifications
             Notification.requestPermission().then(permission => {
                 if (permission === 'granted') {
                     notificationsEnabled = true;
-                    this.innerText = "Dashboard Armed";
-                    this.style.backgroundColor = "#30363d"; // Darken button to show it's active
-                    
-                    // Send a test notification
-                    new Notification("Vault Armed", { body: "Audio and pop-ups are active." });
+                    this.innerText = "Dashboard Armed & Synced";
+                    this.style.backgroundColor = "#30363d";
                 }
             });
-            
-            // "Unlock" the audio player for the browser
+
+            // 2. Unlock Audio
             siren.play().then(() => {
                 siren.pause();
                 siren.currentTime = 0;
-            }).catch(error => console.log("Audio unlock failed"));
-        });
-        // ----------------------------------
+            });
 
-        // 1. Listen for AUTH changes (Locked/Unlocked)
+            // 3. FORCE SYNC: Check current status immediately upon clicking
+            get(statusRef).then((snapshot) => {
+                if (snapshot.exists()) {
+                    checkAndTriggerAlarm(snapshot.val());
+                }
+            });
+        });
+
+        // Live Listeners
         onValue(authRef, (snapshot) => {
             const authData = snapshot.val();
             const authBadge = document.getElementById('authBadge');
-            
             if (authData) {
                 authBadge.innerText = "SYSTEM " + authData;
-                if (authData === "UNLOCKED") {
-                    authBadge.className = "unlocked";
-                    
-                    // Trigger notification for Unlocked
-                    if (notificationsEnabled) {
-                        new Notification("System Unlocked", { body: "Authorized access granted." });
-                    }
-                } else {
-                    authBadge.className = "locked";
-                }
+                authBadge.className = (authData === "UNLOCKED") ? "unlocked" : "locked";
             }
         });
 
-        // 2. Listen for STATUS changes (Sensors/Breaches)
-        let lastKnownStatus = ""; // Remember the last status to prevent spamming notifications
-
         onValue(statusRef, (snapshot) => {
-            const data = snapshot.val();
-            const statusBox = document.getElementById('statusBox');
-            const timeBox = document.getElementById('timeBox');
-
-            if (data) {
-                statusBox.innerText = data;
-                
-                // Smart color styling & Alarm Logic
-                if (data.includes("SECURE") || data.includes("AUTHORIZED")) {
-                    statusBox.className = data.includes("SECURE") ? "secure" : "auth-access";
-                    
-                    // Turn off the siren if it's currently playing
-                    siren.pause();
-                    siren.currentTime = 0; 
-                    
-                } else if (data.includes("WARNING") || data.includes("ALERT")) {
-                    statusBox.className = "warning"; 
-                    siren.pause(); // Just a warning, no full siren
-                    
-                } else if (data.includes("CRITICAL") || data.includes("BREACH")) {
-                    statusBox.className = "critical"; 
-                    
-                    // PLAY THE SIREN!
-                    siren.play().catch(e => console.log("User hasn't clicked Arm button yet"));
-                }
-
-                // Send a browser notification ONLY if the status actually changed
-                if (notificationsEnabled && data !== lastKnownStatus) {
-                    new Notification("Vault Status Update", { body: data });
-                    lastKnownStatus = data;
-                }
-
-                const now = new Date();
-                timeBox.innerText = "Last Updated: " + now.toLocaleTimeString();
+            if (snapshot.exists()) {
+                checkAndTriggerAlarm(snapshot.val());
             }
         });
     </script>
