@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "23788039726",
+    "firebase_url": "https://bank-vault-8e868-default-rtdb.firebaseio.com",
+    "project_id": "bank-vault-8e868",
+    "storage_bucket": "bank-vault-8e868.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:23788039726:android:c2b8a1689aabd5fffdb9bf",
+        "android_client_info": {
+          "package_name": "com.vault.commandcenter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_GrrwUl6Q9rskWgXCMNVeysZ1WWaihjs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
