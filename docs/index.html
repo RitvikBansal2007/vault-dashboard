@@ -15,12 +15,18 @@
         #authBadge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; text-transform: uppercase; }
         .locked { border: 1px solid #ff7b72; color: #ff7b72; }
         .unlocked { border: 1px solid #3fb950; color: #3fb950; }
-        #statusBox { font-size: 2em; font-weight: bold; padding: 30px; border-radius: 8px; text-transform: uppercase; transition: 0.3s; }
+        #statusBox { font-size: 2em; font-weight: bold; padding: 30px; border-radius: 8px; text-transform: uppercase; transition: 0.3s; margin-bottom: 20px; }
         .secure { background-color: #238636; color: white; }
         .auth-access { background-color: #1f6feb; color: white; }
         .warning { background-color: #d29922; color: black; }
         .critical { background-color: #da3633; color: white; animation: pulse 1s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        
+        /* NEW: Event Log Styles */
+        .log-container { background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 15px; text-align: left; font-family: 'Courier New', Courier, monospace; height: 120px; overflow-y: hidden; }
+        .log-title { color: #8b949e; font-size: 0.8em; margin-bottom: 10px; border-bottom: 1px solid #30363d; padding-bottom: 5px; }
+        .log-entry { font-size: 0.9em; margin-bottom: 6px; font-weight: bold; }
+        .log-time { float: right; color: #8b949e; font-weight: normal; }
     </style>
 </head>
 <body>
@@ -32,6 +38,13 @@
         <br>
         <div id="authBadge" class="locked">SYSTEM LOCKED</div>
         <div id="statusBox" class="secure">CONNECTING...</div>
+        
+        <div class="log-container">
+            <div class="log-title">ACTIVITY LOG</div>
+            <div id="logList">
+                <div class="log-entry" style="color: #8b949e;">► SYSTEM &rarr; Initializing...</div>
+            </div>
+        </div>
     </div>
 
     <audio id="sirenAudio" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" loop></audio>
@@ -47,7 +60,6 @@
             storageBucket: "bank-vault-8e868.firebasestorage.app",
             messagingSenderId: "23788039726",
             appId: "1:23788039726:web:c2cf97ee10477968fdb9bf",
-            measurementId: "G-B9W11GXFXD",
             databaseURL: "https://bank-vault-8e868-default-rtdb.firebaseio.com"
         };
 
@@ -61,6 +73,35 @@
         const armBtn = document.getElementById('armBtn');
         let notificationsEnabled = false;
         let audioUnlocked = false;
+
+        // State trackers to prevent duplicate logs
+        let lastAuth = null;
+        let lastStatus = null;
+        let lastUser = null;
+
+        // NEW: Advanced Logging Function
+        function addToLog(category, value) {
+            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            let color = "#c9d1d9"; // default greyish-white
+            
+            // Color Logic
+            if (value.includes("BREACH") || value.includes("CRITICAL")) color = "#ff7b72"; // Red
+            else if (value.includes("WARNING") || value.includes("ALERT")) color = "#d29922"; // Yellow
+            else if (value.includes("UNLOCKED") || value.includes("AUTHORIZED") || value.includes("Admin")) color = "#3fb950"; // Green
+
+            const newLog = document.createElement('div');
+            newLog.className = 'log-entry';
+            newLog.style.color = color;
+            newLog.innerHTML = `► ${category} &rarr; ${value} <span class="log-time">${time}</span>`;
+
+            const logList = document.getElementById('logList');
+            logList.insertBefore(newLog, logList.firstChild); // Put newest at the top
+
+            // Keep only the last 5 logs to stay clean
+            if (logList.children.length > 5) {
+                logList.removeChild(logList.lastChild);
+            }
+        }
 
         if (localStorage.getItem('vaultArmed') === 'true') {
             if (Notification.permission === 'granted') {
@@ -94,19 +135,34 @@
             this.className = "armed";
             if (Notification.permission !== 'granted') Notification.requestPermission();
             get(statusRef).then((snap) => { if (snap.exists()) checkAndTriggerAlarm(snap.val()); });
+            addToLog("SYSTEM", "Dashboard Armed");
         });
 
+        // Listeners configured to send to the Log
         onValue(userRef, (snap) => {
-            document.getElementById('userDisplay').innerText = "ACTIVE USER: " + (snap.val() || "NONE");
+            const user = snap.val() || "NONE";
+            document.getElementById('userDisplay').innerText = "ACTIVE USER: " + user;
+            if (lastUser !== null && lastUser !== user && user !== "None") addToLog("USER", user);
+            lastUser = user;
         });
 
         onValue(authRef, (snap) => {
+            const auth = snap.val();
             const badge = document.getElementById('authBadge');
-            badge.innerText = "SYSTEM " + snap.val();
-            badge.className = (snap.val() === "UNLOCKED") ? "unlocked" : "locked";
+            badge.innerText = "SYSTEM " + auth;
+            badge.className = (auth === "UNLOCKED") ? "unlocked" : "locked";
+            if (lastAuth !== null && lastAuth !== auth) addToLog("AUTH", auth);
+            lastAuth = auth;
         });
 
-        onValue(statusRef, (snap) => { if (snap.exists()) checkAndTriggerAlarm(snap.val()); });
+        onValue(statusRef, (snap) => { 
+            if (snap.exists()) {
+                const status = snap.val();
+                checkAndTriggerAlarm(status);
+                if (lastStatus !== null && lastStatus !== status) addToLog("STATUS", status);
+                lastStatus = status;
+            }
+        });
     </script>
 </body>
 </html>
