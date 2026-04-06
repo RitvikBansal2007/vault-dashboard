@@ -96,12 +96,10 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // --- PIN AUTHENTICATION LOGIC (WITH SHA-256 HASHING) ---
         const loginBtn = document.getElementById('loginBtn');
         const pinInput = document.getElementById('pinInput');
         const pinRef = ref(db, 'Vault/PIN');
 
-        // Cryptographic Hashing Function (SHA-256)
         async function hashPIN(pin) {
             const msgUint8 = new TextEncoder().encode(pin);
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
@@ -109,12 +107,8 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // Allow pressing "Enter" on keyboard to submit PIN
         pinInput.addEventListener("keypress", function(event) {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                loginBtn.click();
-            }
+            if (event.key === "Enter") { event.preventDefault(); loginBtn.click(); }
         });
 
         loginBtn.addEventListener('click', async () => {
@@ -122,18 +116,14 @@
             const errorText = document.getElementById('loginError');
             loginBtn.innerText = "VERIFYING...";
 
-            // 1. Scramble the typed PIN
             const hashedInput = await hashPIN(enteredPin);
 
-            // 2. Compare it to the scrambled PIN in the database
             get(pinRef).then((snapshot) => {
                 if (snapshot.exists() && snapshot.val() === hashedInput) {
-                    // Success! 
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('mainDashboard').style.display = 'block';
                     startDashboard(); 
                 } else {
-                    // Failed!
                     loginBtn.innerText = "UNLOCK DASHBOARD";
                     errorText.style.display = 'block';
                     pinInput.value = ''; 
@@ -145,27 +135,26 @@
             });
         });
 
-        // --- DASHBOARD LOGIC (Only runs after successful PIN) ---
         function startDashboard() {
             const statusRef = ref(db, 'Vault/Status');
             const authRef = ref(db, 'Vault/Auth');
             const userRef = ref(db, 'Vault/User');
+            const pingRef = ref(db, 'Vault/Last_Ping'); // NEW: Heartbeat ref
 
             const siren = document.getElementById('sirenAudio');
             const armBtn = document.getElementById('armBtn');
             let notificationsEnabled = false;
             let audioUnlocked = false;
+            let isOffline = false; // NEW tracker
 
-            let lastAuth = null;
-            let lastStatus = null;
-            let lastUser = null;
+            let lastAuth = null, lastStatus = null, lastUser = null;
+            let latestPingTimestamp = 0; // NEW tracker
 
             function addToLog(category, value) {
                 const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
                 let color = "#c9d1d9"; 
-                
                 if (value.includes("BREACH") || value.includes("CRITICAL")) color = "#ff7b72"; 
-                else if (value.includes("WARNING") || value.includes("ALERT")) color = "#d29922"; 
+                else if (value.includes("WARNING") || value.includes("ALERT") || value.includes("OFFLINE")) color = "#d29922"; 
                 else if (value.includes("UNLOCKED") || value.includes("AUTHORIZED") || value.includes("Admin")) color = "#3fb950"; 
 
                 const newLog = document.createElement('div');
@@ -175,11 +164,39 @@
 
                 const logList = document.getElementById('logList');
                 logList.insertBefore(newLog, logList.firstChild); 
-
-                if (logList.children.length > 5) {
-                    logList.removeChild(logList.lastChild);
-                }
+                if (logList.children.length > 5) logList.removeChild(logList.lastChild);
             }
+
+            // NEW: Heartbeat Listener
+            onValue(pingRef, (snap) => {
+                if (snap.exists()) {
+                    latestPingTimestamp = snap.val();
+                    if(isOffline) {
+                        isOffline = false;
+                        addToLog("SYSTEM", "CONNECTION RESTORED");
+                        // Force a re-check of current status
+                        get(statusRef).then((s) => { if(s.exists()) checkAndTriggerAlarm(s.val()); });
+                    }
+                }
+            });
+
+            // NEW: Background Offline Checker (Runs every 10 seconds)
+            setInterval(() => {
+                if (latestPingTimestamp === 0) return; // Wait until first ping arrives
+                const currentUnixTime = Math.floor(Date.now() / 1000);
+                const timeDifference = currentUnixTime - latestPingTimestamp;
+
+                if (timeDifference > 300) { // 300 seconds = 5 minutes
+                    if (!isOffline) {
+                        isOffline = true;
+                        const statusBox = document.getElementById('statusBox');
+                        statusBox.innerText = "SYSTEM OFFLINE (CONNECTION LOST)";
+                        statusBox.className = "warning";
+                        addToLog("SYSTEM", "CRITICAL: HARDWARE OFFLINE");
+                        if (notificationsEnabled) new Notification("VAULT OFFLINE", { body: "Connection to physical hardware lost!" });
+                    }
+                }
+            }, 10000);
 
             if (localStorage.getItem('vaultArmed') === 'true') {
                 if (Notification.permission === 'granted') {
@@ -190,6 +207,8 @@
             }
 
             function checkAndTriggerAlarm(data) {
+                if(isOffline) return; // Don't override offline warning
+
                 const statusBox = document.getElementById('statusBox');
                 statusBox.innerText = data;
                 if (data.includes("SECURE") || data.includes("AUTHORIZED")) {
