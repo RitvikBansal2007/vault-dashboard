@@ -18,13 +18,10 @@
             font-weight: bold; outline: none; transition: 0.3s;
         }
         #pinInput:focus { border-color: #58a6ff; box-shadow: 0 0 15px rgba(88, 166, 255, 0.3); }
-        #pinInput:disabled { opacity: 0.5; cursor: not-allowed; }
         
         #loginBtn { background-color: #1f6feb; color: white; border: none; padding: 15px 30px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.3s; font-size: 1.1em; letter-spacing: 1px; }
         #loginBtn:hover { background-color: #388bfd; }
-        #loginBtn:disabled { background-color: #30363d; color: #8b949e; cursor: not-allowed; }
         
-        #sysStatus { color: #8b949e; font-size: 0.9em; margin-bottom: 20px; font-family: monospace;}
         #loginError { color: #ff7b72; font-size: 1em; font-weight: bold; margin-top: 15px; display: none; animation: shake 0.4s; }
         @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
 
@@ -45,6 +42,7 @@
         .critical { background-color: #da3633; color: white; animation: pulse 1s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
         
+        /* Event Log Styles */
         .log-container { background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 15px; text-align: left; font-family: 'Courier New', Courier, monospace; height: 120px; overflow-y: hidden; }
         .log-title { color: #8b949e; font-size: 0.8em; margin-bottom: 10px; border-bottom: 1px solid #30363d; padding-bottom: 5px; }
         .log-entry { font-size: 0.9em; margin-bottom: 6px; font-weight: bold; }
@@ -55,11 +53,11 @@
 
     <div class="login-container" id="loginScreen">
         <h1>VAULT TERMINAL</h1>
-        <div id="sysStatus">ESTABLISHING SECURE CONNECTION...</div>
+        <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 20px;">SYSTEM LOCKED. ENTER PIN.</p>
         
-        <input type="password" id="pinInput" maxlength="4" pattern="[0-9]*" inputmode="numeric" autocomplete="off" disabled>
+        <input type="password" id="pinInput" maxlength="4" pattern="[0-9]*" inputmode="numeric" autocomplete="off">
         <br>
-        <button id="loginBtn" disabled>UNLOCK DASHBOARD</button>
+        <button id="loginBtn">UNLOCK DASHBOARD</button>
         <div id="loginError">ACCESS DENIED: INVALID PIN</div>
     </div>
 
@@ -73,7 +71,9 @@
         
         <div class="log-container">
             <div class="log-title">ACTIVITY LOG</div>
-            <div id="logList"></div>
+            <div id="logList">
+                <div class="log-entry" style="color: #8b949e;">► SYSTEM &rarr; Initializing...</div>
+            </div>
         </div>
     </div>
 
@@ -82,7 +82,6 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getDatabase, ref, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDuwgLK0qFc2R4i8ll_6NdKuo_tc1fNWrU",
@@ -96,58 +95,57 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const auth = getAuth(app);
 
-        const sysStatus = document.getElementById('sysStatus');
-        const pinInput = document.getElementById('pinInput');
+        // --- PIN AUTHENTICATION LOGIC (WITH SHA-256 HASHING) ---
         const loginBtn = document.getElementById('loginBtn');
+        const pinInput = document.getElementById('pinInput');
+        const pinRef = ref(db, 'Vault/PIN');
 
-        // --- 1. SILENT HANDSHAKE ---
-        // Log in silently as the system account to bypass the strict Firebase Rules
-        signInWithEmailAndPassword(auth, "system@vault.local", "VaultSystem2026")
-            .then(() => {
-                sysStatus.innerText = "CONNECTION SECURE. AWAITING PIN.";
-                sysStatus.style.color = "#3fb950";
-                pinInput.disabled = false;
-                loginBtn.disabled = false;
-                pinInput.focus();
-            })
-            .catch((error) => {
-                sysStatus.innerText = "NETWORK ERROR: FIREBASE AUTH FAILED.";
-                sysStatus.style.color = "#ff7b72";
-                console.error("Auth Error:", error);
-            });
+        // Cryptographic Hashing Function (SHA-256)
+        async function hashPIN(pin) {
+            const msgUint8 = new TextEncoder().encode(pin);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
 
-        // --- 2. PIN VERIFICATION ---
+        // Allow pressing "Enter" on keyboard to submit PIN
         pinInput.addEventListener("keypress", function(event) {
-            if (event.key === "Enter") { event.preventDefault(); loginBtn.click(); }
+            if (event.key === "Enter") {
+                event.preventDefault();
+                loginBtn.click();
+            }
         });
 
-        loginBtn.addEventListener('click', () => {
+        loginBtn.addEventListener('click', async () => {
             const enteredPin = pinInput.value;
             const errorText = document.getElementById('loginError');
             loginBtn.innerText = "VERIFYING...";
 
-            const pinRef = ref(db, 'Vault/PIN');
-            
+            // 1. Scramble the typed PIN
+            const hashedInput = await hashPIN(enteredPin);
+
+            // 2. Compare it to the scrambled PIN in the database
             get(pinRef).then((snapshot) => {
-                if (snapshot.exists() && snapshot.val().toString() === enteredPin) {
+                if (snapshot.exists() && snapshot.val() === hashedInput) {
+                    // Success! 
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('mainDashboard').style.display = 'block';
                     startDashboard(); 
                 } else {
+                    // Failed!
                     loginBtn.innerText = "UNLOCK DASHBOARD";
                     errorText.style.display = 'block';
                     pinInput.value = ''; 
                     setTimeout(() => { errorText.style.display = 'none'; }, 2000);
                 }
             }).catch((error) => {
-                console.error("Database Read Error:", error);
+                console.error("Database Error:", error);
                 loginBtn.innerText = "UNLOCK DASHBOARD";
             });
         });
 
-        // --- 3. MAIN DASHBOARD LOGIC ---
+        // --- DASHBOARD LOGIC (Only runs after successful PIN) ---
         function startDashboard() {
             const statusRef = ref(db, 'Vault/Status');
             const authRef = ref(db, 'Vault/Auth');
@@ -157,11 +155,15 @@
             const armBtn = document.getElementById('armBtn');
             let notificationsEnabled = false;
             let audioUnlocked = false;
-            let lastAuth = null, lastStatus = null, lastUser = null;
+
+            let lastAuth = null;
+            let lastStatus = null;
+            let lastUser = null;
 
             function addToLog(category, value) {
                 const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
                 let color = "#c9d1d9"; 
+                
                 if (value.includes("BREACH") || value.includes("CRITICAL")) color = "#ff7b72"; 
                 else if (value.includes("WARNING") || value.includes("ALERT")) color = "#d29922"; 
                 else if (value.includes("UNLOCKED") || value.includes("AUTHORIZED") || value.includes("Admin")) color = "#3fb950"; 
@@ -173,7 +175,10 @@
 
                 const logList = document.getElementById('logList');
                 logList.insertBefore(newLog, logList.firstChild); 
-                if (logList.children.length > 5) logList.removeChild(logList.lastChild);
+
+                if (logList.children.length > 5) {
+                    logList.removeChild(logList.lastChild);
+                }
             }
 
             if (localStorage.getItem('vaultArmed') === 'true') {
