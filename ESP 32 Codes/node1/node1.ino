@@ -1,72 +1,68 @@
 #include <WiFi.h>
-#include <FirebaseESP32.h>
-#include <Adafruit_Fingerprint.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
 
-// WiFi & Firebase Config
-const char* ssid = "YOUR_WIFI_SSID";
+const char* ssid = "YOUR_WIFI_SSID"; 
 const char* password = "YOUR_WIFI_PASSWORD";
-#define FIREBASE_HOST "bank-vault-8e868-default-rtdb.firebaseio.com"
-#define FIREBASE_AUTH "XSYlD5KsejgJzorB68mpuiXAbh9s25bcbAa64A3c" 
+const char* mqttServer = "893f221f30f648dbbfd49580f6bf8ad6.s1.eu.hivemq.cloud";
+const int mqttPort = 8883;
+const char* mqttUsername = "vault_admin";
+const char* mqttPassword = "12345#@aA#@12345";
 
-// Hardware Serial for Fingerprint (RX2=16, TX2=17)
-HardwareSerial mySerial(2);
-Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
+// PIN ASSIGNMENTS
+const int pulsePinEntry = 32;
+const int pulsePinExit = 33;
+const int irEntryDetect = 25; // NEW: Detecting presence at the door
+const int ledYellow = 26; // System Ready
+const int ledGreen = 27;  // Access Granted
 
-FirebaseData fbData;
-FirebaseAuth auth;
-FirebaseConfig config;
+const int pulseThreshold = 2500;
+
+WiFiClientSecure espClient;
+PubSubClient client(espClient);
 
 void setup() {
   Serial.begin(115200);
+  pinMode(irEntryDetect, INPUT);
+  pinMode(ledYellow, OUTPUT);
+  pinMode(ledGreen, OUTPUT);
   
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) { delay(500); }
 
-  config.host = FIREBASE_HOST;
-  config.signer.tokens.legacy_token = FIREBASE_AUTH;
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
+  espClient.setInsecure();
+  client.setServer(mqttServer, mqttPort);
+}
 
-  finger.begin(57600);
-  if (finger.verifyPassword()) {
-    Serial.println("Fingerprint sensor detected!");
+void reconnect() {
+  while (!client.connected()) {
+    if (client.connect("Node1_Gatekeeper", mqttUsername, mqttPassword)) {
+      digitalWrite(ledYellow, HIGH); // Ready indicator
+    } else { delay(5000); }
   }
 }
 
 void loop() {
-  int id = getFingerprintID();
-  
-  if (id > 0) {
-    Serial.print("Authorized ID Found: "); Serial.println(id);
-    
-    // Dynamic Lookup: Fetch name from Vault/Authorized_Users/id
-    String path = "Vault/Authorized_Users/" + String(id);
-    String userName = "Unknown User";
-    
-    if (Firebase.getString(fbData, path)) {
-      userName = fbData.stringData();
-    }
+  if (!client.connected()) reconnect();
+  client.loop();
 
-    // Grant Access
-    Firebase.setString(fbData, "Vault/User", userName);
-    Firebase.setString(fbData, "Vault/Auth", "UNLOCKED");
-    
-    Serial.println("Access Granted to: " + userName);
+  int entryAuth = analogRead(pulsePinEntry);
+  int exitAuth = analogRead(pulsePinExit);
+  int presence = digitalRead(irEntryDetect);
 
-    // Stay unlocked for 10 seconds, then reset
-    delay(10000); 
-    Firebase.setString(fbData, "Vault/Auth", "LOCKED");
-    Firebase.setString(fbData, "Vault/User", "None");
+  // LOGIC: Access Granted
+  if ((entryAuth > pulseThreshold || exitAuth > pulseThreshold) && presence == HIGH) {
+    digitalWrite(ledYellow, LOW);
+    digitalWrite(ledGreen, HIGH);
+    client.publish("vault/user", "Authorized Access");
+    client.publish("vault/auth", "UNLOCKED");
+    
+    delay(10000); // Wait 10s
+    
+    digitalWrite(ledGreen, LOW);
+    digitalWrite(ledYellow, HIGH);
+    client.publish("vault/auth", "LOCKED");
+    client.publish("vault/user", "None");
   }
-  delay(500);
-}
-
-int getFingerprintID() {
-  uint8_t p = finger.getImage();
-  if (p != FINGERPRINT_OK) return -1;
-  p = finger.image2Tz();
-  if (p != FINGERPRINT_OK) return -1;
-  p = finger.fingerFastSearch();
-  if (p != FINGERPRINT_OK) return -1;
-  return finger.fingerID;
+  delay(100);
 }
