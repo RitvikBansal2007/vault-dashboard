@@ -5,10 +5,10 @@
 
 const char* ssid = "YOUR_WIFI_SSID"; 
 const char* password = "YOUR_WIFI_PASSWORD";
-const char* mqttServer = "893f221f30f648dbbfd49580f6bf8ad6.s1.eu.hivemq.cloud";
+const char* mqttServer = "SERVERLINK";
 const int mqttPort = 8883;
-const char* mqttUsername = "vault_admin";
-const char* mqttPassword = "12345#@aA#@12345";
+const char* mqttUsername = "USERNAME";
+const char* mqttPassword = "PASSWORD";
 
 // PIN ASSIGNMENTS
 const int trig1 = 5; const int echo1 = 18;  // Ultra 1
