@@ -72,8 +72,8 @@
 
     <div class="dashboard-container" id="mainDashboard">
         <div id="pingDisplay">
-            <div id="ping1Text">NODE 1(Hallway): AWAITING...</div>
-            <div id="ping2Text">NODE 2(Vault): AWAITING...</div>
+            <div id="ping1Text">Hallway: AWAITING...</div>
+            <div id="ping2Text">Vault: AWAITING...</div>
         </div>
         <h1>VAULT SECURITY</h1>
         
@@ -254,12 +254,12 @@
                     return isDeadFlag;
                 }
 
-                node1Dead = evaluatePing(ping1Time, node1Dead, ping1Display, "NODE 1(Hallway)");
-                node2Dead = evaluatePing(ping2Time, node2Dead, ping2Display, "NODE 2(Vault)");
+                node1Dead = evaluatePing(ping1Time, node1Dead, ping1Display, "Hallway");
+                node2Dead = evaluatePing(ping2Time, node2Dead, ping2Display, "Vault");
 
                 // Override status box if hardware is dead
                 if (node1Dead && node2Dead) {
-                    statusBox.innerText = "SYSTEM OFFLINE (ALL NODES DEAD)";
+                    statusBox.innerText = "SYSTEM FULLY OFFLINE";
                     statusBox.className = "warning";
                 } else if (node1Dead) {
                     statusBox.innerText = "WARNING: HALLWAY NODE OFFLINE";
