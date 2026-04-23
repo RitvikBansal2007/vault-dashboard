@@ -10,23 +10,29 @@
         .login-container { background: #161b22; padding: 50px 40px; border-radius: 12px; border: 1px solid #30363d; text-align: center; width: 85%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .login-container h1 { color: #58a6ff; letter-spacing: 4px; margin-bottom: 5px; }
         
-        #pinInput { 
-            width: 150px; padding: 15px; margin: 20px 0; background: #010409; 
+        /* NEW: Styled Inputs for Multi-User */
+        .login-input { 
+            width: 80%; padding: 15px; margin: 10px 0; background: #010409; 
             border: 2px solid #30363d; color: #58a6ff; border-radius: 8px; 
-            font-size: 2em; text-align: center; letter-spacing: 10px; 
+            font-size: 1.2em; text-align: center; letter-spacing: 2px; 
             font-weight: bold; outline: none; transition: 0.3s;
         }
-        #pinInput:focus { border-color: #58a6ff; box-shadow: 0 0 15px rgba(88, 166, 255, 0.3); }
+        .login-input:focus { border-color: #58a6ff; box-shadow: 0 0 15px rgba(88, 166, 255, 0.3); }
         
-        #loginBtn { background-color: #1f6feb; color: white; border: none; padding: 15px 30px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.3s; font-size: 1.1em; letter-spacing: 1px; }
+        #loginBtn { background-color: #1f6feb; color: white; border: none; padding: 15px 30px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 88%; transition: 0.3s; font-size: 1.1em; letter-spacing: 1px; margin-top: 15px; }
         #loginBtn:hover { background-color: #388bfd; }
         
         #loginError { color: #ff7b72; font-size: 1em; font-weight: bold; margin-top: 15px; display: none; animation: shake 0.4s; }
         @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
 
-        .dashboard-container { display: none; background: #161b22; padding: 40px; border-radius: 12px; border: 1px solid #30363d; text-align: center; width: 85%; max-width: 700px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .dashboard-container h1 { color: #58a6ff; letter-spacing: 2px; }
+        .dashboard-container { position: relative; display: none; background: #161b22; padding: 40px; border-radius: 12px; border: 1px solid #30363d; text-align: center; width: 85%; max-width: 700px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .dashboard-container h1 { color: #58a6ff; letter-spacing: 2px; margin-top: 0; }
         
+        /* NEW: Ping Display Box */
+        #pingDisplay { position: absolute; top: 20px; right: 20px; font-family: monospace; font-size: 0.9em; padding: 5px 10px; border-radius: 4px; background: #010409; border: 1px solid #30363d; color: #8b949e; }
+        .ping-live { color: #3fb950 !important; border-color: #3fb950 !important; }
+        .ping-dead { color: #ff7b72 !important; border-color: #ff7b72 !important; animation: pulse 1s infinite; }
+
         #userDisplay { color: #58a6ff; font-weight: bold; margin-bottom: 5px; }
         #occupancyDisplay { color: #ffca28; font-weight: bold; font-size: 1.1em; margin-bottom: 15px; }
         
@@ -53,15 +59,19 @@
 
     <div class="login-container" id="loginScreen">
         <h1>VAULT TERMINAL</h1>
-        <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 20px;">SYSTEM LOCKED. ENTER PIN.</p>
-        <input type="password" id="pinInput" maxlength="4" pattern="[0-9]*" inputmode="numeric" autocomplete="off">
+        <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 20px;">SYSTEM LOCKED. AUTHENTICATE.</p>
+        
+        <input type="text" id="usernameInput" class="login-input" placeholder="USERNAME" autocomplete="off">
+        <input type="password" id="passwordInput" class="login-input" placeholder="PASSWORD" autocomplete="off">
         <br>
-        <button id="loginBtn">UNLOCK DASHBOARD</button>
-        <div id="loginError">ACCESS DENIED: INVALID PIN</div>
+        <button id="loginBtn">AUTHORIZE</button>
+        <div id="loginError">ACCESS DENIED: INVALID CREDENTIALS</div>
     </div>
 
     <div class="dashboard-container" id="mainDashboard">
+        <div id="pingDisplay">SYNC: AWAITING...</div>
         <h1>VAULT SECURITY</h1>
+        
         <div id="userDisplay">ACTIVE USER: DISCONNECTED</div>
         <div id="occupancyDisplay">PEOPLE IN VAULT: 0</div>
         <button id="armBtn">Arm Dashboard</button>
@@ -97,38 +107,59 @@
         const db = getDatabase(app);
 
         const loginBtn = document.getElementById('loginBtn');
-        const pinInput = document.getElementById('pinInput');
-        const pinRef = ref(db, 'Vault/PIN');
+        const usernameInput = document.getElementById('usernameInput');
+        const passwordInput = document.getElementById('passwordInput');
 
-        async function hashPIN(pin) {
-            const msgUint8 = new TextEncoder().encode(pin);
+        // Cryptographic Hash Function
+        async function hashPassword(password) {
+            const msgUint8 = new TextEncoder().encode(password);
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        pinInput.addEventListener("keypress", (e) => { if (e.key === "Enter") loginBtn.click(); });
+        passwordInput.addEventListener("keypress", (e) => { if (e.key === "Enter") loginBtn.click(); });
 
+        // --- NEW MULTI-USER LOGIN LOGIC ---
         loginBtn.addEventListener('click', async () => {
-            const enteredPin = pinInput.value;
-            loginBtn.innerText = "VERIFYING...";
-            const hashedInput = await hashPIN(enteredPin);
+            const enteredUser = usernameInput.value.trim(); // E.g., "Ritvik"
+            const enteredPass = passwordInput.value;
+            const errorDiv = document.getElementById('loginError');
 
-            get(pinRef).then((snapshot) => {
+            if (enteredUser === "" || enteredPass === "") {
+                errorDiv.innerText = "ENTER USERNAME AND PASSWORD";
+                errorDiv.style.display = 'block';
+                setTimeout(() => { errorDiv.style.display = 'none'; }, 2000);
+                return;
+            }
+
+            loginBtn.innerText = "VERIFYING...";
+            const hashedInput = await hashPassword(enteredPass);
+
+            // Dynamically check the specific user's folder in Firebase
+            const userPasswordRef = ref(db, `Vault/Users/${enteredUser}/password`);
+
+            get(userPasswordRef).then((snapshot) => {
                 if (snapshot.exists() && snapshot.val() === hashedInput) {
+                    // Login Success
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('mainDashboard').style.display = 'block';
-                    startDashboard(); 
+                    startDashboard(enteredUser.toUpperCase()); 
                 } else {
-                    loginBtn.innerText = "UNLOCK DASHBOARD";
-                    document.getElementById('loginError').style.display = 'block';
-                    pinInput.value = ''; 
-                    setTimeout(() => { document.getElementById('loginError').style.display = 'none'; }, 2000);
+                    // Login Failed (Wrong user or password)
+                    loginBtn.innerText = "AUTHORIZE";
+                    errorDiv.innerText = "ACCESS DENIED: INVALID CREDENTIALS";
+                    errorDiv.style.display = 'block';
+                    passwordInput.value = ''; 
+                    setTimeout(() => { errorDiv.style.display = 'none'; }, 2000);
                 }
+            }).catch((error) => {
+                console.error("Database Error:", error);
+                loginBtn.innerText = "AUTHORIZE";
             });
         });
 
-        function startDashboard() {
+        function startDashboard(loggedInAdminName) {
             const statusRef = ref(db, 'Vault/Status');
             const authRef = ref(db, 'Vault/Auth');
             const userRef = ref(db, 'Vault/User');
@@ -137,18 +168,22 @@
 
             const siren = document.getElementById('sirenAudio');
             const armBtn = document.getElementById('armBtn');
-            let notificationsEnabled = false;
+            const pingDisplay = document.getElementById('pingDisplay');
+            
             let audioUnlocked = false;
             let isOffline = false;
             let latestPingTimestamp = 0;
             let lastOccupancy = null;
+
+            // Log that a specific team member logged into the dashboard
+            addToLog("SYSTEM", `Dashboard Session Started by ${loggedInAdminName}`);
 
             function addToLog(category, value) {
                 const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
                 let color = "#c9d1d9"; 
                 if (value.includes("BREACH") || value.includes("CRITICAL")) color = "#ff7b72"; 
                 else if (value.includes("WARNING") || value.includes("ALERT") || value.includes("OFFLINE")) color = "#d29922"; 
-                else if (value.includes("UNLOCKED") || value.includes("AUTHORIZED") || value.includes("Admin")) color = "#3fb950"; 
+                else if (value.includes("UNLOCKED") || value.includes("AUTHORIZED") || value.includes("Admin") || value.includes("Started")) color = "#3fb950"; 
 
                 const newLog = document.createElement('div');
                 newLog.className = 'log-entry';
@@ -159,6 +194,7 @@
                 if (logList.children.length > 5) logList.removeChild(logList.lastChild);
             }
 
+            // --- PING LISTENER ---
             onValue(pingRef, (snap) => {
                 if (snap.exists()) {
                     latestPingTimestamp = snap.val();
@@ -170,7 +206,31 @@
                 }
             });
 
-            // New Occupancy Listener
+            // --- LIVE PING TRACKER (Updates every 1 second) ---
+            setInterval(() => {
+                if (latestPingTimestamp === 0) return;
+                const timeDiff = Math.floor(Date.now() / 1000) - latestPingTimestamp;
+                
+                if (timeDiff <= 35) {
+                    // System is healthy (Ping every 25s, so up to 35s is normal)
+                    pingDisplay.innerText = `SYNC: LIVE (${timeDiff}s ago)`;
+                    pingDisplay.className = "ping-live";
+                } else if (timeDiff > 35 && timeDiff <= 300) {
+                    // Lagging, but not officially dead yet
+                    pingDisplay.innerText = `SYNC: LAGGING (${timeDiff}s ago)`;
+                    pingDisplay.className = "";
+                    pingDisplay.style.color = "#d29922"; 
+                } else if (timeDiff > 300 && !isOffline) {
+                    // Over 5 minutes dead = OFFLINE
+                    isOffline = true;
+                    pingDisplay.innerText = `SYNC: DEAD (${timeDiff}s ago)`;
+                    pingDisplay.className = "ping-dead";
+                    document.getElementById('statusBox').innerText = "SYSTEM OFFLINE";
+                    document.getElementById('statusBox').className = "warning";
+                    addToLog("SYSTEM", "CRITICAL: HARDWARE OFFLINE");
+                }
+            }, 1000); // Check every 1 second for the live counter
+
             onValue(occupancyRef, (snap) => {
                 const count = snap.val() || 0;
                 document.getElementById('occupancyDisplay').innerText = "PEOPLE IN VAULT: " + count;
@@ -180,17 +240,6 @@
                 }
                 lastOccupancy = count;
             });
-
-            setInterval(() => {
-                if (latestPingTimestamp === 0) return;
-                const timeDiff = Math.floor(Date.now() / 1000) - latestPingTimestamp;
-                if (timeDiff > 300 && !isOffline) {
-                    isOffline = true;
-                    document.getElementById('statusBox').innerText = "SYSTEM OFFLINE";
-                    document.getElementById('statusBox').className = "warning";
-                    addToLog("SYSTEM", "CRITICAL: HARDWARE OFFLINE");
-                }
-            }, 10000);
 
             function checkAndTriggerAlarm(data) {
                 if(isOffline) return;
@@ -213,12 +262,12 @@
                 siren.play().then(() => { siren.pause(); siren.currentTime = 0; });
                 this.innerText = "Dashboard Fully Armed";
                 this.className = "armed";
-                addToLog("SYSTEM", "Dashboard Armed");
+                addToLog("SYSTEM", "Dashboard Audio Armed");
             });
 
             onValue(userRef, (snap) => {
                 const user = snap.val() || "NONE";
-                document.getElementById('userDisplay').innerText = "ACTIVE USER: " + user;
+                document.getElementById('userDisplay').innerText = "VAULT OCCUPANT: " + user;
                 if (user !== "None" && user !== "NONE") addToLog("USER", user);
             });
 
