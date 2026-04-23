@@ -137,7 +137,7 @@
             const hashedInput = await hashPassword(enteredPass);
 
             // Dynamically check the specific user's folder in Firebase
-            const userPasswordRef = ref(db, `Vault/Users/${enteredUser}/password`);
+            const userPasswordRef = ref(db, `Vault/Users/${enteredUser}`);
 
             get(userPasswordRef).then((snapshot) => {
                 if (snapshot.exists() && snapshot.val() === hashedInput) {
