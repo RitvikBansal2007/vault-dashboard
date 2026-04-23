@@ -10,7 +10,6 @@
         .login-container { background: #161b22; padding: 50px 40px; border-radius: 12px; border: 1px solid #30363d; text-align: center; width: 85%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .login-container h1 { color: #58a6ff; letter-spacing: 4px; margin-bottom: 5px; }
         
-        /* NEW: Styled Inputs for Multi-User */
         .login-input { 
             width: 80%; padding: 15px; margin: 10px 0; background: #010409; 
             border: 2px solid #30363d; color: #58a6ff; border-radius: 8px; 
@@ -28,8 +27,7 @@
         .dashboard-container { position: relative; display: none; background: #161b22; padding: 40px; border-radius: 12px; border: 1px solid #30363d; text-align: center; width: 85%; max-width: 700px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .dashboard-container h1 { color: #58a6ff; letter-spacing: 2px; margin-top: 0; }
         
-        /* NEW: Ping Display Box */
-        #pingDisplay { position: absolute; top: 20px; right: 20px; font-family: monospace; font-size: 0.9em; padding: 5px 10px; border-radius: 4px; background: #010409; border: 1px solid #30363d; color: #8b949e; }
+        #pingDisplay { position: absolute; top: 20px; right: 20px; font-family: monospace; font-size: 0.9em; padding: 5px 10px; border-radius: 4px; background: #010409; border: 1px solid #30363d; color: #8b949e; text-align: left; }
         .ping-live { color: #3fb950 !important; border-color: #3fb950 !important; }
         .ping-dead { color: #ff7b72 !important; border-color: #ff7b72 !important; animation: pulse 1s infinite; }
 
@@ -69,7 +67,10 @@
     </div>
 
     <div class="dashboard-container" id="mainDashboard">
-        <div id="pingDisplay">SYNC: AWAITING...</div>
+        <div id="pingDisplay">
+            <div id="ping1Text">NODE 1: AWAITING...</div>
+            <div id="ping2Text">NODE 2: AWAITING...</div>
+        </div>
         <h1>VAULT SECURITY</h1>
         
         <div id="userDisplay">ACTIVE USER: DISCONNECTED</div>
@@ -120,9 +121,9 @@
 
         passwordInput.addEventListener("keypress", (e) => { if (e.key === "Enter") loginBtn.click(); });
 
-        // --- NEW MULTI-USER LOGIN LOGIC ---
+        // Multi-User Login Logic
         loginBtn.addEventListener('click', async () => {
-            const enteredUser = usernameInput.value.trim(); // E.g., "Ritvik"
+            const enteredUser = usernameInput.value.trim(); 
             const enteredPass = passwordInput.value;
             const errorDiv = document.getElementById('loginError');
 
@@ -136,7 +137,7 @@
             loginBtn.innerText = "VERIFYING...";
             const hashedInput = await hashPassword(enteredPass);
 
-            // Dynamically check the specific user's folder in Firebase
+            // Directly accessing the string next to the user's name
             const userPasswordRef = ref(db, `Vault/Users/${enteredUser}`);
 
             get(userPasswordRef).then((snapshot) => {
@@ -144,9 +145,9 @@
                     // Login Success
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('mainDashboard').style.display = 'block';
-                    startDashboard(enteredUser.toUpperCase()); 
+                    startDashboard(enteredUser); 
                 } else {
-                    // Login Failed (Wrong user or password)
+                    // Login Failed
                     loginBtn.innerText = "AUTHORIZE";
                     errorDiv.innerText = "ACCESS DENIED: INVALID CREDENTIALS";
                     errorDiv.style.display = 'block';
@@ -163,19 +164,22 @@
             const statusRef = ref(db, 'Vault/Status');
             const authRef = ref(db, 'Vault/Auth');
             const userRef = ref(db, 'Vault/User');
-            const pingRef = ref(db, 'Vault/Last_Ping');
             const occupancyRef = ref(db, 'Vault/Occupancy');
+            // Dual Ping References
+            const ping1Ref = ref(db, 'Vault/Last_Ping1');
+            const ping2Ref = ref(db, 'Vault/Last_Ping2');
 
             const siren = document.getElementById('sirenAudio');
             const armBtn = document.getElementById('armBtn');
-            const pingDisplay = document.getElementById('pingDisplay');
+            const ping1Display = document.getElementById('ping1Text');
+            const ping2Display = document.getElementById('ping2Text');
+            const statusBox = document.getElementById('statusBox');
             
             let audioUnlocked = false;
-            let isOffline = false;
-            let latestPingTimestamp = 0;
+            let ping1Time = 0, ping2Time = 0;
+            let node1Dead = false, node2Dead = false;
             let lastOccupancy = null;
 
-            // Log that a specific team member logged into the dashboard
             addToLog("SYSTEM", `Dashboard Session Started by ${loggedInAdminName}`);
 
             function addToLog(category, value) {
@@ -183,7 +187,7 @@
                 let color = "#c9d1d9"; 
                 if (value.includes("BREACH") || value.includes("CRITICAL")) color = "#ff7b72"; 
                 else if (value.includes("WARNING") || value.includes("ALERT") || value.includes("OFFLINE")) color = "#d29922"; 
-                else if (value.includes("UNLOCKED") || value.includes("AUTHORIZED") || value.includes("Admin") || value.includes("Started")) color = "#3fb950"; 
+                else if (value.includes("UNLOCKED") || value.includes("AUTHORIZED") || value.includes("Started") || value.includes("RESTORED")) color = "#3fb950"; 
 
                 const newLog = document.createElement('div');
                 newLog.className = 'log-entry';
@@ -194,43 +198,70 @@
                 if (logList.children.length > 5) logList.removeChild(logList.lastChild);
             }
 
-            // --- PING LISTENER ---
-            onValue(pingRef, (snap) => {
+            // Dual Ping Listeners
+            onValue(ping1Ref, (snap) => {
                 if (snap.exists()) {
-                    latestPingTimestamp = snap.val();
-                    if(isOffline) {
-                        isOffline = false;
-                        addToLog("SYSTEM", "CONNECTION RESTORED");
+                    ping1Time = snap.val();
+                    if(node1Dead) {
+                        node1Dead = false;
+                        addToLog("SYSTEM", "NODE 1 CONNECTION RESTORED");
                         get(statusRef).then((s) => { if(s.exists()) checkAndTriggerAlarm(s.val()); });
                     }
                 }
             });
 
-            // --- LIVE PING TRACKER (Updates every 1 second) ---
-            setInterval(() => {
-                if (latestPingTimestamp === 0) return;
-                const timeDiff = Math.floor(Date.now() / 1000) - latestPingTimestamp;
-                
-                if (timeDiff <= 35) {
-                    // System is healthy (Ping every 25s, so up to 35s is normal)
-                    pingDisplay.innerText = `SYNC: LIVE (${timeDiff}s ago)`;
-                    pingDisplay.className = "ping-live";
-                } else if (timeDiff > 35 && timeDiff <= 300) {
-                    // Lagging, but not officially dead yet
-                    pingDisplay.innerText = `SYNC: LAGGING (${timeDiff}s ago)`;
-                    pingDisplay.className = "";
-                    pingDisplay.style.color = "#d29922"; 
-                } else if (timeDiff > 300 && !isOffline) {
-                    // Over 5 minutes dead = OFFLINE
-                    isOffline = true;
-                    pingDisplay.innerText = `SYNC: DEAD (${timeDiff}s ago)`;
-                    pingDisplay.className = "ping-dead";
-                    document.getElementById('statusBox').innerText = "SYSTEM OFFLINE";
-                    document.getElementById('statusBox').className = "warning";
-                    addToLog("SYSTEM", "CRITICAL: HARDWARE OFFLINE");
+            onValue(ping2Ref, (snap) => {
+                if (snap.exists()) {
+                    ping2Time = snap.val();
+                    if(node2Dead) {
+                        node2Dead = false;
+                        addToLog("SYSTEM", "NODE 2 CONNECTION RESTORED");
+                        get(statusRef).then((s) => { if(s.exists()) checkAndTriggerAlarm(s.val()); });
+                    }
                 }
-            }, 1000); // Check every 1 second for the live counter
+            });
 
+            // Dual Live Ping Tracker
+            setInterval(() => {
+                const now = Math.floor(Date.now() / 1000);
+                
+                function evaluatePing(lastTime, isDeadFlag, displayElement, nodeName) {
+                    if (lastTime === 0) return isDeadFlag;
+                    const diff = now - lastTime;
+                    
+                    if (diff <= 35) {
+                        displayElement.innerText = `${nodeName}: LIVE (${diff}s)`;
+                        displayElement.className = "ping-live";
+                    } else if (diff > 35 && diff <= 300) {
+                        displayElement.innerText = `${nodeName}: LAGGING (${diff}s)`;
+                        displayElement.className = "";
+                        displayElement.style.color = "#d29922"; 
+                    } else if (diff > 300 && !isDeadFlag) {
+                        displayElement.innerText = `${nodeName}: DEAD (${diff}s)`;
+                        displayElement.className = "ping-dead";
+                        addToLog("SYSTEM", `CRITICAL: ${nodeName} HARDWARE OFFLINE`);
+                        return true; 
+                    }
+                    return isDeadFlag;
+                }
+
+                node1Dead = evaluatePing(ping1Time, node1Dead, ping1Display, "NODE 1");
+                node2Dead = evaluatePing(ping2Time, node2Dead, ping2Display, "NODE 2");
+
+                // Override status box if hardware is dead
+                if (node1Dead && node2Dead) {
+                    statusBox.innerText = "SYSTEM OFFLINE (ALL NODES DEAD)";
+                    statusBox.className = "warning";
+                } else if (node1Dead) {
+                    statusBox.innerText = "WARNING: GATEKEEPER NODE OFFLINE";
+                    statusBox.className = "warning";
+                } else if (node2Dead) {
+                    statusBox.innerText = "WARNING: VAULT SENSOR NODE OFFLINE";
+                    statusBox.className = "warning";
+                }
+            }, 1000);
+
+            // Occupancy Listener
             onValue(occupancyRef, (snap) => {
                 const count = snap.val() || 0;
                 document.getElementById('occupancyDisplay').innerText = "PEOPLE IN VAULT: " + count;
@@ -242,8 +273,7 @@
             });
 
             function checkAndTriggerAlarm(data) {
-                if(isOffline) return;
-                const statusBox = document.getElementById('statusBox');
+                if(node1Dead || node2Dead) return; 
                 statusBox.innerText = data;
                 if (data.includes("SECURE") || data.includes("AUTHORIZED")) {
                     statusBox.className = data.includes("SECURE") ? "secure" : "auth-access";
