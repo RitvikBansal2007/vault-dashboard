@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vault Command Center</title>
+    <title>Vault Security</title>
     <style>
         body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
         
@@ -60,7 +60,7 @@
 <body>
 
     <div class="login-container" id="loginScreen">
-        <h1>VAULT TERMINAL</h1>
+        <h1>VAULT SECURITY</h1>
         <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 20px;">SYSTEM LOCKED. AUTHENTICATE.</p>
         
         <input type="text" id="usernameInput" class="login-input" placeholder="USERNAME" autocomplete="off">
@@ -72,8 +72,8 @@
 
     <div class="dashboard-container" id="mainDashboard">
         <div id="pingDisplay">
-            <div id="ping1Text">NODE 1: AWAITING...</div>
-            <div id="ping2Text">NODE 2: AWAITING...</div>
+            <div id="ping1Text">NODE 1(Hallway): AWAITING...</div>
+            <div id="ping2Text">NODE 2(Vault): AWAITING...</div>
         </div>
         <h1>VAULT SECURITY</h1>
         
@@ -254,18 +254,18 @@
                     return isDeadFlag;
                 }
 
-                node1Dead = evaluatePing(ping1Time, node1Dead, ping1Display, "NODE 1");
-                node2Dead = evaluatePing(ping2Time, node2Dead, ping2Display, "NODE 2");
+                node1Dead = evaluatePing(ping1Time, node1Dead, ping1Display, "NODE 1(Hallway)");
+                node2Dead = evaluatePing(ping2Time, node2Dead, ping2Display, "NODE 2(Vault)");
 
                 // Override status box if hardware is dead
                 if (node1Dead && node2Dead) {
                     statusBox.innerText = "SYSTEM OFFLINE (ALL NODES DEAD)";
                     statusBox.className = "warning";
                 } else if (node1Dead) {
-                    statusBox.innerText = "WARNING: GATEKEEPER NODE OFFLINE";
+                    statusBox.innerText = "WARNING: HALLWAY NODE OFFLINE";
                     statusBox.className = "warning";
                 } else if (node2Dead) {
-                    statusBox.innerText = "WARNING: VAULT SENSOR NODE OFFLINE";
+                    statusBox.innerText = "WARNING: VAULT NODE OFFLINE";
                     statusBox.className = "warning";
                 }
             }, 1000);
