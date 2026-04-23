@@ -25,8 +25,12 @@
         @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
 
         .dashboard-container { position: relative; display: none; background: #161b22; padding: 40px; border-radius: 12px; border: 1px solid #30363d; text-align: center; width: 85%; max-width: 700px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .dashboard-container h1 { color: #58a6ff; letter-spacing: 2px; margin-top: 0; }
+        .dashboard-container h1 { color: #58a6ff; letter-spacing: 2px; margin-top: 0; margin-bottom: 5px; }
         
+        /* NEW: Active Session Badge CSS */
+        #activeSessionBadge { font-size: 0.85em; color: #8b949e; font-weight: bold; letter-spacing: 1px; margin-bottom: 20px; text-transform: uppercase; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        #currentAdminName { color: #3fb950; }
+
         #pingDisplay { position: absolute; top: 20px; right: 20px; font-family: monospace; font-size: 0.9em; padding: 5px 10px; border-radius: 4px; background: #010409; border: 1px solid #30363d; color: #8b949e; text-align: left; }
         .ping-live { color: #3fb950 !important; border-color: #3fb950 !important; }
         .ping-dead { color: #ff7b72 !important; border-color: #ff7b72 !important; animation: pulse 1s infinite; }
@@ -72,6 +76,8 @@
             <div id="ping2Text">NODE 2: AWAITING...</div>
         </div>
         <h1>VAULT SECURITY</h1>
+        
+        <div id="activeSessionBadge">LOGGED IN AS: <span id="currentAdminName"></span></div>
         
         <div id="userDisplay">ACTIVE USER: DISCONNECTED</div>
         <div id="occupancyDisplay">PEOPLE IN VAULT: 0</div>
@@ -161,6 +167,9 @@
         });
 
         function startDashboard(loggedInAdminName) {
+            // NEW: Inject logged in user name into the DOM
+            document.getElementById('currentAdminName').innerText = loggedInAdminName;
+
             const statusRef = ref(db, 'Vault/Status');
             const authRef = ref(db, 'Vault/Auth');
             const userRef = ref(db, 'Vault/User');
@@ -180,7 +189,7 @@
             let node1Dead = false, node2Dead = false;
             let lastOccupancy = null;
 
-            addToLog("SYSTEM", `Dashboard Session Started by ${loggedInAdminName}`);
+            addToLog("SYSTEM", `Dashboard Session Started by ${loggedInAdminName.toUpperCase()}`);
 
             function addToLog(category, value) {
                 const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
